@@ -1,0 +1,6 @@
+ortools
+numpy
+shapely
+matplotlib
+fastapi
+uvicorn
