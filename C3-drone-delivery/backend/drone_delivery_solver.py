@@ -9,11 +9,13 @@ from shapely.geometry import Point, LineString, Polygon
 class DroneInstance:
     depot: Tuple[float, float, float]
     clients: List[Tuple[float, float, float]]
-    demands: List[int]
+    demands: List[int]      # Weight demands
+    volumes: List[int]      # Volume demands
     notam_zones: List[List[Tuple[float, float]]]
     num_drones: int
     battery_capacity: int
-    max_load: int
+    max_load: int           # Max weight capacity
+    max_volume: int         # Max volume capacity
     wind_coeff: float = 1.0
     unloading_time: int = 5
     grid_res: int = 30
@@ -106,26 +108,37 @@ class DroneRoutingSolver:
         model = cp_model.CpModel()
         n_n, n_k = self.num_interest, self.inst.num_drones
         arcs = {(i, j, k): model.NewBoolVar(f'a_{i}_{j}_{k}') for i in range(n_n) for j in range(n_n) for k in range(n_k) if i != j}
-        battery = {(i, k): model.NewIntVar(0, self.inst.battery_capacity * 100, f'b_{i}_{k}') for i in range(1, n_n) for k in range(n_k)}
+        battery = {(i, k): model.NewIntVar(0, self.inst.battery_capacity, f'b_{i}_{k}') for i in range(1, n_n) for k in range(n_k)}
         load = {(i, k): model.NewIntVar(0, self.inst.max_load, f'l_{i}_{k}') for i in range(1, n_n) for k in range(n_k)}
+        vol_load = {(i, k): model.NewIntVar(0, self.inst.max_volume, f'v_{i}_{k}') for i in range(1, n_n) for k in range(n_k)}
         
+        # Chaque client est visité exactement une fois
         for i in range(1, n_n):
             model.Add(sum(arcs[i, j, k] for j in range(n_n) for k in range(n_k) if i != j) == 1)
+            
         for k in range(n_k):
+            # Conservation du flux (pour chaque noeud, dont le dépôt)
             for j in range(n_n):
                 model.Add(sum(arcs[i, j, k] for i in range(n_n) if i != j) == sum(arcs[j, l, k] for l in range(n_n) if j != l))
-            model.Add(sum(arcs[0, j, k] for j in range(1, n_n)) <= 1)
+            
+            # Contraintes pour batterie et charge (MTZ)
             for i in range(n_n):
-                for j in range(n_n):
+                for j in range(1, n_n):
                     if i == j: continue
-                    if i == 0 and j > 0:
-                        model.Add(battery[j, k] == self.inst.battery_capacity * 100 - self.dist_matrix[0, j]).OnlyEnforceIf(arcs[0, j, k])
+                    if i == 0:
+                        # Départ du dépôt : reset complet (énergie + colis)
+                        model.Add(battery[j, k] == self.inst.battery_capacity - self.dist_matrix[0, j]).OnlyEnforceIf(arcs[0, j, k])
                         model.Add(load[j, k] == self.inst.demands[j-1]).OnlyEnforceIf(arcs[0, j, k])
-                    elif i > 0 and j > 0:
+                        model.Add(vol_load[j, k] == self.inst.volumes[j-1]).OnlyEnforceIf(arcs[0, j, k])
+                    else:
+                        # Entre deux clients
                         model.Add(battery[j, k] == battery[i, k] - self.dist_matrix[i, j]).OnlyEnforceIf(arcs[i, j, k])
                         model.Add(load[j, k] == load[i, k] + self.inst.demands[j-1]).OnlyEnforceIf(arcs[i, j, k])
-                    elif i > 0 and j == 0:
-                        model.Add(battery[i, k] >= self.dist_matrix[i, 0]).OnlyEnforceIf(arcs[i, 0, k])
+                        model.Add(vol_load[j, k] == vol_load[i, k] + self.inst.volumes[j-1]).OnlyEnforceIf(arcs[i, j, k])
+            
+            # Retour au dépôt : assez de batterie pour le trajet final
+            for i in range(1, n_n):
+                model.Add(battery[i, k] >= self.dist_matrix[i, 0]).OnlyEnforceIf(arcs[i, 0, k])
 
         model.Minimize(sum(arcs[i, j, k] * self.dist_matrix[i, j] for i, j, k in arcs))
         solver = cp_model.CpSolver()
@@ -135,45 +148,69 @@ class DroneRoutingSolver:
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             routes = []
             for k in range(n_k):
-                drone_path, curr = [], 0
-                while True:
-                    nxt = -1
-                    for j in range(n_n):
-                        if curr != j and solver.Value(arcs[curr, j, k]): nxt = j; break
-                    if nxt == -1: break
-                    seg = self.full_paths[(curr, nxt)]
-                    if not drone_path: drone_path.extend(seg)
-                    else: drone_path.extend(seg[1:])
-                    curr = nxt
-                    if curr == 0: break
-                if drone_path: routes.append({'drone_id': k, 'geometry': drone_path})
+                starts = [j for j in range(1, n_n) if solver.Value(arcs[0, j, k])]
+                if not starts: continue
+                
+                drone_trips = []
+                for start_node in starts:
+                    trip_nodes = [0, start_node]
+                    curr = start_node
+                    while curr != 0:
+                        found_next = False
+                        for j in range(n_n):
+                            if curr != j and solver.Value(arcs[curr, j, k]):
+                                trip_nodes.append(j)
+                                curr = j
+                                found_next = True
+                                break
+                        if not found_next: break
+                    
+                    trip_geo = []
+                    trip_dist, trip_w, trip_v = 0, 0, 0
+                    for idx in range(len(trip_nodes) - 1):
+                        u, v = trip_nodes[idx], trip_nodes[idx+1]
+                        seg = self.full_paths[(u, v)]
+                        if not trip_geo: trip_geo.extend(seg)
+                        else: trip_geo.extend(seg[1:])
+                        trip_dist += self.dist_matrix[u, v] / 100.0
+                        if v > 0:
+                            trip_w += self.inst.demands[v-1]
+                            trip_v += self.inst.volumes[v-1]
+                    
+                    drone_trips.append({
+                        'geometry': trip_geo,
+                        'distance': round(trip_dist, 2),
+                        'weight': trip_w,
+                        'volume': trip_v
+                    })
+                
+                if drone_trips:
+                    routes.append({
+                        'drone_id': k,
+                        'trips': drone_trips,
+                        'total_distance': round(sum(t['distance'] for t in drone_trips), 2),
+                        'total_weight': sum(t['weight'] for t in drone_trips),
+                        'total_volume': sum(t['volume'] for t in drone_trips)
+                    })
             return routes
         return None
 
 if __name__ == "__main__":
-    print("--- DÉMARRAGE DU TEST (TRAJET DIRECT VS CONTOURNEMENT) ---")
-    # Mur avec passage central
-    wall1 = [(45, 0), (45, 40), (55, 40), (55, 0)]
-    wall2 = [(45, 60), (45, 100), (55, 100), (55, 60)]
-    
+    print("--- DÉMARRAGE DU TEST ---")
     data = DroneInstance(
         depot=(20, 50, 0), 
-        clients=[
-            (10, 50, 10),  # Ouest (Accessible en direct)
-            (90, 50, 10),  # Est (Bloqué, doit contourner par le milieu y=50)
-            (20, 20, 10),  # Ouest (Accessible en direct)
-            (80, 80, 10)   # Est (Bloqué, doit contourner)
-        ],
-        demands=[5, 5, 5, 5],
-        notam_zones=[wall1, wall2],
+        clients=[(10, 50, 10), (90, 50, 10), (20, 20, 10), (80, 80, 10)],
+        demands=[50, 50, 50, 50],
+        volumes=[100, 100, 100, 100],
+        notam_zones=[],
         num_drones=2,
         battery_capacity=3000,
-        max_load=15
+        max_load=150,
+        max_volume=300
     )
-    
     res = DroneRoutingSolver(data).solve()
     if res:
         for r in res:
-            print(f"\nDrone {r['drone_id']} :")
-            for i, p in enumerate(r['geometry']):
-                print(f"  Étape {i}: ({p[0]:.1f}, {p[1]:.1f})")
+            print(f"\nDrone {r['drone_id']} (Total dist: {r['total_distance']}km) :")
+            for t_idx, t in enumerate(r['trips']):
+                print(f"  Trip {t_idx}: {t['distance']}km, {t['weight']/10}kg, {t['volume']/10}L")

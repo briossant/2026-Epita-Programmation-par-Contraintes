@@ -121,18 +121,13 @@
     <h2>Paramètres client</h2>
     <div class="row">
       <label>Poids (kg)</label>
-      <input type="range" id="client-weight" min="0.5" max="10" step="0.5" value="2" />
-      <span class="val" id="client-weight-val">2</span>
+      <input type="range" id="client-weight" min="0.5" max="10" step="0.1" value="2" />
+      <span class="val" id="client-weight-val">2.0</span>
     </div>
     <div class="row">
       <label>Volume (L)</label>
-      <input type="range" id="client-volume" min="1" max="20" step="1" value="5" />
-      <span class="val" id="client-volume-val">5</span>
-    </div>
-    <div class="row">
-      <label>Priorité</label>
-      <input type="range" id="client-priority" min="1" max="3" step="1" value="1" />
-      <span class="val" id="client-priority-val">1</span>
+      <input type="range" id="client-volume" min="0.1" max="20" step="0.1" value="5" />
+      <span class="val" id="client-volume-val">5.0</span>
     </div>
   </div>
 
@@ -150,6 +145,10 @@
       <label>Charge max (kg)</label>
       <input type="number" id="drone-weight" value="10" min="1" max="50" />
     </div>
+    <div class="row">
+      <label>Volume max (L)</label>
+      <input type="number" id="drone-volume" value="20" min="1" max="100" />
+    </div>
   </div>
 
   <div class="section">
@@ -157,7 +156,16 @@
     <div class="row">
       <label>Facteur vent</label>
       <input type="range" id="wind-factor" min="0.5" max="1.0" step="0.05" value="1.0" />
-      <span class="val" id="wind-factor-val">1.0</span>
+      <span class="val" id="wind-factor-val">1.00</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Navigation</h2>
+    <div class="row">
+      <label>Précision (Gros - Fin)</label>
+      <input type="range" id="grid-res" min="10" max="60" step="5" value="30" />
+      <span class="val" id="grid-res-val">30</span>
     </div>
   </div>
 
@@ -220,11 +228,9 @@ function xyToLatLng(x, y, refLat, refLng) {
 function depotIcon() {
   return L.divIcon({ html: '🏠', className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
 }
-function clientIcon(priority) {
-  const colors = { 1: '#888', 2: '#f59e0b', 3: '#e05c5c' };
-  const c = colors[priority] || '#888';
+function clientIcon() {
   return L.divIcon({
-    html: `<div style="width:14px;height:14px;border-radius:50%;background:${c};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
+    html: `<div style="width:14px;height:14px;border-radius:50%;background:#888;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>`,
     className: '', iconSize: [14, 14], iconAnchor: [7, 7]
   });
 }
@@ -256,15 +262,16 @@ function showHint() {
 function bindSlider(id, valId) {
   const input = document.getElementById(id);
   const val = document.getElementById(valId);
-  val.textContent = input.value;
-  input.addEventListener('input', () => val.textContent = parseFloat(input.value).toFixed(
-    id === 'wind-factor' ? 2 : 0
-  ));
+  val.textContent = parseFloat(input.value).toFixed(1);
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    val.textContent = v.toFixed(id === 'wind-factor' ? 2 : 1);
+  });
 }
 bindSlider('client-weight', 'client-weight-val');
 bindSlider('client-volume', 'client-volume-val');
-bindSlider('client-priority', 'client-priority-val');
 bindSlider('wind-factor', 'wind-factor-val');
+bindSlider('grid-res', 'grid-res-val');
 
 // --- Map click ---
 map.on('click', e => {
@@ -276,13 +283,12 @@ map.on('click', e => {
     depotMarker.bindTooltip('Dépôt', { permanent: false });
 
   } else if (mode === 'client') {
-    const priority = parseInt(document.getElementById('client-priority').value);
     const weight = parseFloat(document.getElementById('client-weight').value);
     const volume = parseFloat(document.getElementById('client-volume').value);
     const id = clientIdCounter++;
-    const m = L.marker([lat, lng], { icon: clientIcon(priority), draggable: true }).addTo(map);
-    m.bindTooltip(`#${id} — ${weight}kg ${volume}L p${priority}`, { permanent: false });
-    m._clientData = { id, lat, lng, weight, volume, priority };
+    const m = L.marker([lat, lng], { icon: clientIcon(), draggable: true }).addTo(map);
+    m.bindTooltip(`#${id} — ${weight.toFixed(1)}kg ${volume.toFixed(1)}L`, { permanent: false });
+    m._clientData = { id, lat, lng, weight, volume };
     clientMarkers.push(m);
 
   } else if (mode === 'zone') {
@@ -355,6 +361,7 @@ document.getElementById('btn-solve').addEventListener('click', async () => {
       return latLngToXY(pos.lat, pos.lng, refLat, refLng);
     }),
     demands: clientMarkers.map(m => Math.round(m._clientData.weight * 10)),
+    volumes: clientMarkers.map(m => Math.round(m._clientData.volume * 10)),
     notam_zones: zonePolygons.map(p =>
       p._zoneData.points.map(pt => {
         const arr = Array.isArray(pt) ? pt : [pt.lat, pt.lng];
@@ -365,6 +372,8 @@ document.getElementById('btn-solve').addEventListener('click', async () => {
     num_drones: nDrones,
     battery_capacity: Math.round(dRange * 100 / wind),
     max_load: Math.round(dWeight * 10),
+    max_volume: Math.round(parseFloat(document.getElementById('drone-volume').value) * 10),
+    grid_res: parseInt(document.getElementById('grid-res').value),
   };
 
   try {
@@ -407,39 +416,45 @@ function renderResult(data, refLat, refLng) {
   data.routes.forEach((route, idx) => {
     const color = DRONE_COLORS[idx % DRONE_COLORS.length];
 
-    // Convert geometry (x,y,z km offsets) back to lat/lng for Leaflet
-    const pts = route.geometry.map(p => xyToLatLng(p[0], p[1], refLat, refLng));
-    const line = L.polyline(pts, { color, weight: 3, opacity: 0.85 }).addTo(map);
-    routeLayers.push(line);
-
-    // Mark start and end (depot)
-    const startMarker = L.circleMarker(pts[0], {
-      radius: 7, color, fillColor: '#fff', fillOpacity: 1, weight: 3
-    }).addTo(map);
-    startMarker.bindTooltip(`Drone ${route.drone_id} — départ/retour dépôt`);
-    routeLayers.push(startMarker);
-
-    // Sidebar card
-    const totalDist = route.geometry.length > 1
-      ? route.geometry.reduce((acc, p, i) => {
-          if (i === 0) return 0;
-          const prev = route.geometry[i - 1];
-          return acc + Math.sqrt((p[0]-prev[0])**2 + (p[1]-prev[1])**2);
-        }, 0).toFixed(1)
-      : 0;
-
     const item = document.createElement('div');
     item.className = 'route-item';
     item.style.borderLeft = `3px solid ${color}`;
+    
+    let tripsHtml = '';
+    route.trips.forEach((trip, tIdx) => {
+      // Render geometry
+      const pts = trip.geometry.map(p => xyToLatLng(p[0], p[1], refLat, refLng));
+      const line = L.polyline(pts, { color, weight: 3, opacity: 0.85 }).addTo(map);
+      routeLayers.push(line);
+
+      // Mark start
+      const startMarker = L.circleMarker(pts[0], {
+        radius: 5, color, fillColor: '#fff', fillOpacity: 1, weight: 2
+      }).addTo(map);
+      routeLayers.push(startMarker);
+
+      const tWeight = (trip.weight / 10).toFixed(1);
+      const tVolume = (trip.volume / 10).toFixed(1);
+      
+      tripsHtml += `
+        <div style="margin-top:8px; border-top:1px dashed #dde1ea; padding-top:4px;">
+          <div style="font-weight:600; font-size:0.7rem; color:#888;">PARCOURS #${tIdx + 1}</div>
+          <div class="stops">
+            📏 ${trip.distance} km | ⚖️ ${tWeight} kg | 📦 ${tVolume} L
+          </div>
+        </div>
+      `;
+    });
+
     item.innerHTML = `
       <div class="route-header">
         <span class="drone-label" style="color:${color}">Drone ${route.drone_id}</span>
-        <span class="route-badge" style="background:${color}22;color:${color}">${route.geometry.length} pts</span>
+        <span style="font-size:0.75rem; color:#888;">${route.trips.length} parcours</span>
       </div>
-      <div class="stops">
-        📍 Dépôt → contournement NOTAM → 📍<br/>
-        📏 ${totalDist} km parcourus
+      <div style="font-size:0.75rem; margin-top:4px; font-weight:600;">
+        Total: ${route.total_distance} km
       </div>
+      ${tripsHtml}
     `;
     routesList.appendChild(item);
   });

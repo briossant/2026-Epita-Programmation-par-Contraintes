@@ -23,10 +23,13 @@ class MissionRequest(BaseModel):
     depot: Tuple[float, float, float]
     clients: List[Tuple[float, float, float]]
     demands: List[int]
+    volumes: List[int]
     notam_zones: List[List[Tuple[float, float]]]
     num_drones: int
     battery_capacity: int
     max_load: int
+    max_volume: int
+    grid_res: int
 
 
 @app.get("/")
@@ -40,10 +43,13 @@ async def solve_mission(req: MissionRequest):
         depot=req.depot,
         clients=req.clients,
         demands=req.demands,
+        volumes=req.volumes,
         notam_zones=req.notam_zones,
         num_drones=req.num_drones,
         battery_capacity=req.battery_capacity,
         max_load=req.max_load,
+        max_volume=req.max_volume,
+        grid_res=req.grid_res,
     )
     solver = DroneRoutingSolver(instance)
     routes = solver.solve()
