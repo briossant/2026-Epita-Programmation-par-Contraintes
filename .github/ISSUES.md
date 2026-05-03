@@ -19,3 +19,15 @@ reference issue numbers in their merge messages.
 - **Discussion:**
   - @NCH04: small/med/large/stress sizes
   - @Sosolalt (review): outputs reproducible by seed
+
+## #2 — Greedy LOS heuristic
+- **Owner:** @56Nights
+- **Reviewer:** @Sosolalt
+- **Branch:** main (direct)
+- **Status:** open
+- **Acceptance:**
+  - [x] LOS ranking by price / sqrt(|S|)
+  - [x] respects exclusivity and budget
+- **Discussion:**
+  - @56Nights: drafting LOS
+  - @Sosolalt (review): heuristic matches expected ranking on toy
