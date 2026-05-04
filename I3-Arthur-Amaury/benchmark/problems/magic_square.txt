@@ -1,0 +1,1 @@
+Remplis une grille NxN avec des entiers de 1 a N*N tels que la somme de chaque ligne, colonne et diagonale soit identique. N=3.

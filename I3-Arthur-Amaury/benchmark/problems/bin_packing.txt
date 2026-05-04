@@ -1,0 +1,1 @@
+Place 5 objets de tailles 10, 20, 30, 40, 50 dans un minimum de boites de capacite 60.

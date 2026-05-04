@@ -1,0 +1,1 @@
+Minimise le cout d'un regime satisfaisant 2000 kcal, 50g proteines. Aliments: Pomme (50kcal, 0g, 1€), Viande (200kcal, 20g, 5€).

@@ -1,0 +1,1 @@
+Planifie 3 jobs sur 3 machines. Job 1: M1(10)->M2(5)->M3(20). Job 2: M2(10)->M1(10)->M3(10). Job 3: M3(5)->M1(15)->M2(10).
