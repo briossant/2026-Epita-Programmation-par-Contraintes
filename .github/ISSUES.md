@@ -55,3 +55,14 @@ reference issue numbers in their merge messages.
 - **Discussion:**
   - @Sosolalt: budgets break truthfulness — algebra + numeric example
   - @56Nights (review): note clarifies non-truthfulness under budgets
+
+## #5 — CATS benchmarks status note
+- **Owner:** @NCH04
+- **Reviewer:** @56Nights
+- **Branch:** main (direct)
+- **Status:** open
+- **Acceptance:**
+  - [x] coverage / scaling / gaps documented
+- **Discussion:**
+  - @NCH04: scope (5 economic distributions vs L1-L8 out-of-scope)
+  - @56Nights (review): limitations clearly stated
