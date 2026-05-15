@@ -152,7 +152,7 @@ const ui = new UIManager({
   onReset: () => {
     playing = false; frame = 0;
     if (droneManager && solution) {
-      droneManager.updateFrame(solution.paths, 0);
+      droneManager.resetForReplay(solution.paths);
       ui.updateFrame(0, solution.makespan);
     }
   },
@@ -211,7 +211,7 @@ async function solve(drones, nofly = []) {
   if (solution.status === 'infeasible') return;
 
   droneManager = new DroneManager(drones, cityScene.scene);
-  droneManager.updateFrame(solution.paths, 0);
+  droneManager.updateFrame(solution.paths, 0, true);
   ui.updateFrame(0, solution.makespan);
 }
 

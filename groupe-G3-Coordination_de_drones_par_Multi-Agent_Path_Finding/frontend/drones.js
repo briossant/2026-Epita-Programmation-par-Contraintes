@@ -32,38 +32,49 @@ export class DroneManager {
         new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.5 }));
       scene.add(trail);
 
-      // Start — torus ring flat on ground
+      // Start — torus ring at actual start altitude
+      const startY = this._toWorld(d.start).y;
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry(0.32, 0.06, 8, 24),
         new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.55 })
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(d.start[1] * CELL, 0.05, d.start[0] * CELL);
+      ring.position.set(d.start[1] * CELL, startY, d.start[0] * CELL);
       scene.add(ring);
 
-      // Goal — glowing vertical pillar + beacon light
+      // Goal — pillar up to goal altitude + ring + star at that height
+      const goalY = this._toWorld(d.goal).y;
+      const pillarH = Math.max(goalY, 0.1);
       const pillar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.07, 0.07, 3, 8),
+        new THREE.CylinderGeometry(0.05, 0.05, pillarH, 8),
         new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 })
       );
-      pillar.position.set(d.goal[1] * CELL, 1.5, d.goal[0] * CELL);
+      pillar.position.set(d.goal[1] * CELL, pillarH / 2, d.goal[0] * CELL);
       scene.add(pillar);
 
       const beacon = new THREE.PointLight(col, 0.9, 3.5);
-      beacon.position.copy(pillar.position);
+      beacon.position.set(d.goal[1] * CELL, goalY, d.goal[0] * CELL);
       scene.add(beacon);
 
-      // Star marker at top of pillar
+      const goalRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.32, 0.06, 8, 24),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8 })
+      );
+      goalRing.rotation.x = -Math.PI / 2;
+      goalRing.position.set(d.goal[1] * CELL, goalY, d.goal[0] * CELL);
+      scene.add(goalRing);
+
+      // Star marker just above the goal ring
       const star = new THREE.Mesh(
         new THREE.OctahedronGeometry(0.18),
         new THREE.MeshBasicMaterial({ color: col })
       );
-      star.position.set(d.goal[1] * CELL, 3.1, d.goal[0] * CELL);
+      star.position.set(d.goal[1] * CELL, goalY + 0.35, d.goal[0] * CELL);
       scene.add(star);
 
       this.drones.push({
-        id: d.id, mesh, trail, trailPts: [],
-        ring, pillar, beacon, star, col,
+        id: d.id, mesh, trail, trailPts: [], baseY: null,
+        ring, pillar, beacon, goalRing, star, col,
       });
     }
   }
@@ -76,21 +87,24 @@ export class DroneManager {
     );
   }
 
-  updateFrame(paths, t) {
+  updateFrame(paths, t, skipTrail = false) {
     for (const d of this.drones) {
       const path = paths[String(d.id)];
       if (!path) continue;
       const world = this._toWorld(path[Math.min(t, path.length - 1)]);
       d.mesh.position.copy(world);
+      d.baseY = world.y;
 
       d.trailPts.push(world.clone());
       if (d.trailPts.length > TRAIL_LEN) d.trailPts.shift();
 
-      const attr = d.trail.geometry.attributes.position;
-      for (let i = 0; i < d.trailPts.length; i++)
-        attr.setXYZ(i, d.trailPts[i].x, d.trailPts[i].y, d.trailPts[i].z);
-      attr.needsUpdate = true;
-      d.trail.geometry.setDrawRange(0, d.trailPts.length);
+      if (!skipTrail) {
+        const attr = d.trail.geometry.attributes.position;
+        for (let i = 0; i < d.trailPts.length; i++)
+          attr.setXYZ(i, d.trailPts[i].x, d.trailPts[i].y, d.trailPts[i].z);
+        attr.needsUpdate = true;
+        d.trail.geometry.setDrawRange(0, d.trailPts.length);
+      }
     }
 
     // Conflict flash — drones within 1.2 cells
@@ -107,19 +121,30 @@ export class DroneManager {
     });
   }
 
+  resetForReplay(paths) {
+    for (const d of this.drones) {
+      const path = paths[String(d.id)];
+      if (!path) continue;
+      const world = this._toWorld(path[0]);
+      d.mesh.position.copy(world);
+      d.baseY = world.y;
+      d.trailPts = [world.clone()];
+      // geometry not touched: visual trail stays frozen until replay begins
+    }
+  }
+
   animateTrails() {
     const t = Date.now() * 0.002;
     this.drones.forEach((d, i) => {
-      // Subtle hover bob
-      d.mesh.position.y += Math.sin(t + i * 1.3) * 0.003;
-      // Slowly spin the goal star
+      if (d.baseY !== null)
+        d.mesh.position.y = d.baseY + Math.sin(t + i * 1.3) * 0.04;
       d.star.rotation.y += 0.02;
     });
   }
 
   dispose(scene) {
     for (const d of this.drones)
-      [d.mesh, d.trail, d.ring, d.pillar, d.beacon, d.star]
+      [d.mesh, d.trail, d.ring, d.pillar, d.beacon, d.goalRing, d.star]
         .forEach(o => scene.remove(o));
     this.drones = [];
   }
