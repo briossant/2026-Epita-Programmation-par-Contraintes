@@ -12,6 +12,98 @@ Le Multi-Agent Path Finding (MAPF) consiste a calculer les trajectoires optimale
 - Evaluer sur les benchmarks MAPF de la litterature (Moving AI Lab, grid-based)
 - Comparer avec les algorithmes specialises MAPF (CBS, A* with OD, ECBS)
 
+---
+
+## Structure du projet
+
+```
+.
+├── solver/               # Algorithmes MAPF
+│   ├── grid.py           # Grille 2D/3D, voisins, obstacles
+│   ├── mapf.py           # CP-SAT (MAPFSolver)
+│   ├── cbs.py            # CBS + ECBS (space-time A*)
+│   ├── astar.py          # A* + BFS distances
+│   └── od_astar.py       # OD-A* (Operator Decomposition)
+├── api/                  # Backend Flask
+│   ├── server.py         # Endpoints /scenarios et /solve  →  port 5050
+│   └── scenario_loader.py
+├── frontend/             # Interface web 3D
+│   ├── index.html
+│   ├── scene.js          # Rendu 3D (Three.js)
+│   ├── drones.js         # Animation drones
+│   ├── ui.js             # Contrôles utilisateur
+│   ├── api.js            # Appels REST
+│   └── serve.py          # Serveur de dev  →  port 8080
+├── notebooks/            # Analyses Jupyter
+│   ├── 01_model_2d.ipynb # MAPF 2D : CP-SAT, CBS, ECBS, OD-A*
+│   └── 02_model_3d.ipynb # Extension 3D avec bâtiments
+├── scenarios/            # 11 scénarios JSON pré-définis
+├── tests/                # Tests pytest
+│   ├── test_grid.py
+│   ├── test_mapf.py
+│   ├── test_cbs.py
+│   ├── test_od_astar.py
+│   └── test_api.py
+└── requirements.txt
+```
+
+---
+
+## Lancement
+
+### Installation
+
+```bash
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+### Backend (API Flask)
+
+```bash
+python api/server.py
+# → http://localhost:5050
+```
+
+Endpoints disponibles :
+- `GET  /scenarios` — liste des scénarios pré-définis
+- `POST /solve`     — résout une instance MAPF (méthodes : `cpsat`, `cbs`, `ecbs`, `od_astar`)
+
+### Frontend (interface web 3D)
+
+Dans un second terminal (le backend doit tourner en parallèle) :
+
+```bash
+python frontend/serve.py
+# → http://localhost:8080
+```
+
+Ouvrir `http://localhost:8080` dans le navigateur.
+
+### Tests
+
+```bash
+pytest
+# ou en mode verbeux
+pytest -v
+```
+
+### Notebooks
+
+```bash
+jupyter lab
+# ouvrir notebooks/01_model_2d.ipynb  (MAPF 2D)
+# ouvrir notebooks/02_model_3d.ipynb  (extension 3D)
+```
+
+---
+
 ### Notebooks CoursIA pertinents
 
 | Notebook | Chemin | Pertinence |
