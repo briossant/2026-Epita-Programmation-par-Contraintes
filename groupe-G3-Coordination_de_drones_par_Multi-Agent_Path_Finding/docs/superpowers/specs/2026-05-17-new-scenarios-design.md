@@ -29,7 +29,7 @@ def add_building(self, row: int, col: int, height: int) -> None:
 | Fichier | Nom | Grille | Drones | Bâtiments | Objectif |
 |---|---|---|---|---|---|
 | `06_dense_city.json` | `dense_city` | 10×10×3 | 10 | 29 | Navigation 3D dense |
-| `07_bottleneck_s.json` | `bottleneck_s` | 10×10×1 | 8 | 40 | Goulot en S bidirectionnel |
+| `07_bottleneck_s.json` | `bottleneck_s` | 10×10×1 | 6 | 63 | Tunnel S creusé dans bloc plein |
 | `08_large_sparse.json` | `large_sparse` | 20×20×5 | 10 | 20 | Baseline grande grille |
 | `09_large_medium.json` | `large_medium` | 20×20×5 | 15 | 35 | Scalabilité intermédiaire |
 | `10_large_dense.json` | `large_dense` | 20×20×5 | 20 | 55 | Densité max + charge |
@@ -76,47 +76,61 @@ id 9 : [9,7,0] → [0,2,2]
 
 ---
 
-## Scénario 07 — `bottleneck_s` (10×10×1, 8 drones)
+## Scénario 07 — `bottleneck_s` (10×10×1, 6 drones)
 
-**Objectif :** Forcer tous les drones à traverser un couloir en S — conflits bidirectionnels
-maximum dans la zone de croisement (rows 4-5).
+**Objectif :** Un bloc massif occupe la quasi-totalité de la grille. Un tunnel en S y est
+creusé. Les drones doivent le traverser en sens opposés — conflits frontaux dans le couloir
+étroit, résolution dans les zones d'entrée/sortie.
 
-### Structure du couloir
+### Structure (. = libre, W = bâtiment height 1)
 
 ```
      Col: 0 1 2 3 4 5 6 7 8 9
-Row 0:    . . . . . W W W W W
-Row 1:    . . . . . W W W W W
-Row 2:    . . . . . W W W W W
-Row 3:    . . . . . W W W W W
-Row 4:    . . . . . . . . . .  ← croisement (tous passent ici)
-Row 5:    . . . . . . . . . .  ← croisement
-Row 6:    W W W W W . . . . .
-Row 7:    W W W W W . . . . .
-Row 8:    W W W W W . . . . .
-Row 9:    W W W W W . . . . .
+Row 0:    . . W W W W W W W W   ← zone entrée (4 cellules)
+Row 1:    . . W W W W W W W W
+Row 2:    . . . . . . . W W W   ← tunnel part à droite (cols 0-6)
+Row 3:    W W W W W W . W W W   ← descend sur col 6
+Row 4:    W W W W W W . W W W
+Row 5:    W W W . . . . W W W   ← repart à gauche (cols 3-6)
+Row 6:    W W W . W W W W W W   ← descend sur col 3
+Row 7:    W W W . . . . . . .   ← le tunnel s'ouvre → grande zone sortie
+Row 8:    W W W W . . . . . .
+Row 9:    W W W W . . . . . .
 ```
 
-- **Mur A** : rows 0-3, cols 5-9 → 20 bâtiments height 1
-- **Mur B** : rows 6-9, cols 0-4 → 20 bâtiments height 1
-- **Zone croisement** : rows 4-5, tout ouvert
+- **63 bâtiments** (height 1) — bloc plein
+- **37 cellules libres** : zone entrée (4) + tunnel S (14) + zone sortie (19)
+- **Zone entrée** : rows 0-1, cols 0-1
+- **Zone sortie** : row 7 cols 3-9 + rows 8-9 cols 4-9
 
-### Drones
+### Bâtiments (63, height 1)
+```
+Row 0 : cols 2-9  (8)
+Row 1 : cols 2-9  (8)
+Row 2 : cols 7-9  (3)
+Row 3 : cols 0-5 + 7-9  (9)
+Row 4 : cols 0-5 + 7-9  (9)
+Row 5 : cols 0-2 + 7-9  (6)
+Row 6 : cols 0-2 + 4-9  (9)
+Row 7 : cols 0-2  (3)
+Row 8 : cols 0-3  (4)
+Row 9 : cols 0-3  (4)
+```
 
-Gauche→droite (start col 0, goal col 9) :
+### Drones (6)
+
+Entrée→sortie :
 ```
-id 0 : [0,0] → [9,9]
-id 1 : [1,0] → [8,9]
-id 2 : [2,0] → [7,9]
-id 3 : [3,0] → [6,9]
+id 0 : [0,0] → [8,9]
+id 1 : [0,1] → [9,9]
+id 2 : [1,0] → [9,8]
 ```
 
-Droite→gauche (start col 9, goal col 0) :
+Sortie→entrée (conflits frontaux dans le tunnel) :
 ```
-id 4 : [9,9] → [0,0]
-id 5 : [8,9] → [1,0]
-id 6 : [7,9] → [2,0]
-id 7 : [6,9] → [3,0]
+id 3 : [8,9] → [0,0]
+id 4 : [9,9] → [0,1]
+id 5 : [9,8] → [1,0]
 ```
 
 ---
