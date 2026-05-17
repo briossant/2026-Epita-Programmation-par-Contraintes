@@ -98,10 +98,9 @@ class MAPFSolver:
         for a in range(N):
             for t in range(T):
                 for p in range(P):
-                    if (a, p, t) not in here:
-                        continue
-                    out = [move[(a, p, q, t)] for q in nbrs[p] if (a, p, q, t) in move]
-                    model.Add(sum(out) == here[(a, p, t)])
+                    if (a, p, t) in here:
+                        out = [move[(a, p, q, t)] for q in nbrs[p] if (a, p, q, t) in move]
+                        model.Add(sum(out) == here[(a, p, t)])
                     if (a, p, t + 1) in here:
                         inc = [move[(a, q, p, t)] for q in nbrs[p] if (a, q, p, t) in move]
                         model.Add(sum(inc) == here[(a, p, t + 1)])

@@ -97,6 +97,9 @@ def test_cpsat_domain_reduction_correct_paths():
     # Aucun chemin ne passe par l'obstacle
     for path in sol.paths.values():
         assert (2, 2) not in path
+    # Vérification absence de conflits
+    _no_vertex_conflicts(sol.paths)
+    _no_edge_conflicts(sol.paths)
 
 def test_3d_solver_avoids_building():
     g = Grid(rows=6, cols=6, alts=3)
