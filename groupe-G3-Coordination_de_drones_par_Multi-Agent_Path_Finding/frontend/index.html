@@ -341,6 +341,19 @@
   }
   #inp-timeout:hover { border-color: #3b82f6; color: #fff; }
   #inp-timeout:focus { outline: none; border-color: #3b82f6; color: #fff; }
+
+  #btn-smooth.is-active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 1px 8px rgba(37, 99, 235, 0.18);
+  }
+
+  #sld-speed {
+    width: 90px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -390,6 +403,9 @@
     <button id="btn-pause">&#9646;&#9646; Pause</button>
     <button id="btn-step">&#x23ED; Step</button>
     <button id="btn-reset">&#x21BA; Reset</button>
+    <div class="ctrl-divider"></div>
+    <button id="btn-smooth" title="Animation lissée (lerp)">〜 Smooth</button>
+    <input type="range" id="sld-speed" min="80" max="1500" value="380" title="Vitesse (ms/step)">
   </div>
   <div class="ctrl-divider"></div>
   <div class="ctrl-actions">
@@ -422,8 +438,8 @@ document.body.appendChild(renderer.domElement);
 
 const cityScene = new CityScene(renderer);
 let droneManager = null, solution = null, currentScenario = null;
-let playing = false, frame = 0, lastTick = 0;
-const SPEED_MS = 380;
+let playing = false, frame = 0, lastTick = 0, lastFrameTime = 0;
+let smoothing = false;
 
 // ── UIManager ─────────────────────────────────────────────────────────────────
 const ui = new UIManager({
@@ -447,6 +463,12 @@ const ui = new UIManager({
   onAddNoFly:   (nf) => cityScene.addNoFlyBox(nf.min, nf.max),
   onClearNoFly: ()   => cityScene.clearNoFly(),
 });
+
+document.getElementById('btn-smooth').onclick = () => {
+  smoothing = !smoothing;
+  lastFrameTime = performance.now();
+  document.getElementById('btn-smooth').classList.toggle('is-active', smoothing);
+};
 
 // ── Scenario loading ──────────────────────────────────────────────────────────
 async function init() {
@@ -536,13 +558,28 @@ renderer.domElement.addEventListener('click', (e) => {
 // ── Render loop ───────────────────────────────────────────────────────────────
 function loop(ts) {
   requestAnimationFrame(loop);
-  if (playing && solution && droneManager && ts - lastTick > SPEED_MS) {
-    lastTick = ts;
-    if (frame < solution.makespan) {
-      frame++;
-      droneManager.updateFrame(solution.paths, frame);
-      ui.updateFrame(frame, solution.makespan);
-    } else { playing = false; }
+  if (playing && solution && droneManager) {
+    const speedMs = Number(document.getElementById('sld-speed').value);
+    if (!smoothing) {
+      if (ts - lastTick > speedMs) {
+        lastTick = ts;
+        if (frame < solution.makespan) {
+          frame++;
+          droneManager.updateFrame(solution.paths, frame);
+          ui.updateFrame(frame, solution.makespan);
+        } else { playing = false; }
+      }
+    } else {
+      const alpha = Math.min((ts - lastFrameTime) / speedMs, 1);
+      droneManager.updateFrameLerp(solution.paths, frame, alpha);
+      if (alpha >= 1) {
+        lastFrameTime = ts;
+        if (frame < solution.makespan) {
+          frame++;
+          ui.updateFrame(frame, solution.makespan);
+        } else { playing = false; }
+      }
+    }
   }
   droneManager?.animateTrails();
   cityScene.update();
